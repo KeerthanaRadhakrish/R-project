@@ -1,0 +1,279 @@
+---
+title: "Gonorrhoea in Benton County"
+author: "Keerthana Radhakrishnan"
+date: "4/8/2020"
+output: word_document
+---
+Setting directory and reading the data:
+```{r}
+setwd("~/Downloads/internship/Project BCHD/Gonorrhoea ")
+gt<-read.csv("Benton GC.csv",header=TRUE,as.is=TRUE,sep=",",na.strings = "")
+View(gt) # view the data
+```
+
+```{r}
+# packages required
+require(lubridate)
+require(dplyr)
+require(tidyr)
+require(lattice)
+```
+Cases per year and month:
+The CollectionDate column is in character format. I will convert it into Date and break it down into month and year.
+```{r}
+gt$CollectionDate<-mdy(gt$EXP_Lab..CollectionDate)
+gt = gt %>% 
+  mutate(CollectionDate = ymd(CollectionDate)) %>% 
+  mutate_at(vars(CollectionDate), funs(year, month, day)) %>%
+  filter(year>=2010 & year <= 2019) # filtering data between year 2010 and 2019
+```
+Creating a new dataset for year, month and count of cases:
+```{r}
+years_cases<- gt%>%
+  group_by(year,month)%>%
+  summarise(count=n())
+```
+5- year average (2015-2019):
+```{r}
+gt_five_avg<- years_wide %>%
+  filter(year<=2019 & year>=2015)
+# For Benton:
+mean(gt_five_avg$total_cases)
+mean(gt_five_avg$rate)
+
+# For Oregon:
+mean(gt_five_avg$OR_cases)
+mean(gt_five_avg$OR_rate)
+```
+10- year average (2010-2019):
+```{r}
+mean(years_wide$total_cases)
+mean(years_wide$rate)
+mean(years_wide$OR_cases)
+mean(years_wide$OR_rate)
+
+```
+
+Trellis plot:
+```{r}
+xyplot(years_cases$count~years_cases$month|factor(years_cases$year),layout=c(3,4),main="Trellis plot: Gonorrhoeal cases per month from 2010-2019",type='b',xlab = "month", ylab = "count",aspect = "fill",strip = TRUE,col="blue")
+```
+Calculating total cases per year and including total population estimates to calculate rates:
+```{r}
+# Wide format of the dataset including year, month and number of cases per month for each year:
+years_wide<-spread(years_cases,month,count)
+
+# to create a new variable "total_cases" for total number of cases per year:
+for (i in years_wide$year){
+  years_wide$total_cases <- rowSums(years_wide[2:13],na.rm=TRUE)
+  print(years_wide)
+}
+
+# including new variable for total population in Benton county per year:
+years_wide$total.pop<- c(85735,85995,86785,87725,88740,90005,91320,92575,93590,94360)
+
+# including new variable for number of cases in Oregon per year:
+years_wide$OR_cases<-c(1078,	1490,	1469,	1751,	2293,	3243,	4362,	5037,	5894,	6073)
+
+#Including oregon total population per year:
+years_wide$OR_pop<-c(3837300,	3857625,	3883735,	3919020,	3962710,	4013845,	4076350,	4141100,	4195300,	4236400)
+
+# creating new variable calculating the rates in Oregon:
+years_wide<- years_wide%>%
+  mutate(rate=((total_cases/total.pop)*100000)) %>%
+  mutate(OR_rate=(OR_cases/OR_pop)*100000)
+
+# view the newly edited data:
+View(years_wide)
+```
+Creating graphs for cases per year:
+```{r}
+years_wide$year<-as.factor(years_wide$year)
+ggplot(years_wide,aes(x=year,y=total_cases,group=1))+
+  geom_line(mapping=aes(x=year,y=total_cases,group=1),colour="blue",lty=7,lwd=2)+
+  geom_point(colour="blue",lwd=2)+
+  theme_bw()+
+  labs(x="Year", y="Number of cases", title = "Gonorrhoea cases in Benton county- 2010-2019")
+
+```
+cases per year in Oregon:
+```{r}
+ggplot(years_wide,aes(x=year,y=OR_cases,group=1))+
+  geom_line(colour="dark green",lty=7,lwd=2)+
+  geom_point(colour="dark green",lwd=2)+
+  theme_bw()+
+  labs(x="Year", y="Number of cases ", title = "Gonorrhoea cases in Oregon- 2010-2019")
+```
+comparing Rates per 100,000 for oregon and Benton county:
+```{r}
+colors<-c("Benton county"="blue","Oregon"="darkgreen")
+ggplot(years_wide,aes(x=year,y=rate,group=1))+
+  geom_line(aes(x=year,y=rate,group=1,colour="Benton"),lty=7,lwd=2)+
+  geom_line(aes(x=year,y=OR_rate,group=1,colour="Oregon"),lty=1,lwd=2)+
+  geom_point(aes(x=year,y=rate,group=1),colour="blue",lwd=3)+
+  geom_point(aes(x=year,y=OR_rate,group=1), colour="darkgreen",lwd=3)+
+  scale_y_continuous(breaks=seq(0,200,10))+
+  theme_bw()+
+  labs(x="Year", y="Rate (per 100,000)", title = "Gonorrhoea rates in Benton County and Oregon- 2010-2019",color="Legend")+
+  scale_colour_manual(name="Legend",values=c(Benton="blue", Oregon="darkgreen"))
+```
+Gonorrhea cases and Gender:
+
+Creating a new dataset to make it easier to plot:
+```{r}
+# new dataset including year, Sex and number of cases per Sex for each year:
+gender_gt<- gt%>%
+  group_by(year,Sex)%>%
+  summarise(number=n())
+
+# assigning and excluding missing values:
+gender_gt[which(gender_gt$Sex==" "),]<-NA
+gender_gt <- na.omit(gender_gt)
+
+#view the data
+gender_gt
+```
+Now, creating pyramid plot for cases and gender:
+```{r}
+gender_gt$year<-as.factor(gender_gt$year)
+ggplot(data=gender_gt) +
+  geom_bar(aes(year,number,group=Sex,fill=Sex), stat = "identity",subset(gender_gt,Sex=="F")) +
+  geom_bar(aes(year,-number,group=Sex,fill=Sex), stat = "identity",subset(gender_gt,Sex=="M")) +
+  scale_y_continuous(breaks=seq(-50,50,5),labels=abs(seq(-50,50,5))) +
+  theme_bw()+
+  labs(x="Year",y="Number of cases",title="Gonorrhoea cases by gender in Benton county- 2010-2019")+
+  coord_flip()+
+ scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+Creating a scatterplot plot by year and gender:
+```{r}
+#gender_gt$year<-as.factor(gender_gt$year)
+ggplot(gender_gt,aes(x=year,y=number,group=Sex))+
+  geom_line(aes(col=Sex),lwd=1)+
+  geom_point(aes(col=Sex))+
+  labs(x="Year",y="Number of cases",title="Gonorrhoea cases between year 2010-2019 categorized by gender")+
+  scale_colour_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))+
+  theme_bw()
+```
+Cases by age and gender:
+Creating a new dataset with year, Sex, Age and count of cases:
+```{r}
+age_cat<- gt%>%
+  group_by(Age,Sex)%>%
+  summarise(counts=n())
+
+# Creating age age groups manually and then calculate number of cases for each range:
+
+age_cat<- age_cat%>%
+  mutate(age_cat=case_when(Age < 10 ~ "(0-9)",
+                           Age >= 10  & Age <= 19 ~ "(10-19)",
+                           Age >= 20  & Age <= 29 ~ "(20-29)",
+                           Age >= 30  & Age <= 39 ~ "(30-39)",
+                           Age >= 40  & Age <= 49 ~ "(40-49)",
+                           Age >= 50  & Age <= 59 ~ "(50-59)",
+                           Age >= 60  & Age <= 69 ~ "(60-69)",
+                           Age >= 70  & Age <= 79 ~ "(70-79)",
+                           Age >= 80  & Age <= 89 ~ "(80-89)",
+                           Age >= 90  & Age <= 99 ~ "(90-99)"))
+
+age_cat # look at the data
+```
+
+Now, we can plot the age ranges using pyramid plot:
+```{r}
+ggplot(data=age_cat) +
+  geom_bar(aes(age_cat,counts,group=Sex,fill=Sex), stat = "identity",subset(age_cat,Sex=="F")) +
+  geom_bar(aes(age_cat,-counts,group=Sex,fill=Sex), stat = "identity",subset(age_cat,Sex=="M"),na.rm=TRUE) +
+  scale_y_continuous(breaks=seq(-300,300,50),labels=abs(seq(-300,300,50))) +
+  scale_x_discrete()+
+  theme_bw()+
+  labs(x="Age range",y="Number of cases",title="Gonorrhoea cases categorised by Age group and Gender")+
+  coord_flip()+
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+Now, let see how the number of cases vary with race:
+
+For this, I will create a new dataset with race and count per year:
+```{r}
+race_cases<- gt%>%
+  filter(year<=2019 & year>2009)%>%
+  group_by(year,Race)%>%
+  summarise(count=n())
+race_cases
+```
+
+```{r}
+table(race_cases$Race)
+
+# creating "Two races" category by combining all observations with two races:
+race_cases$Race[which(race_cases$Race=="Black\nWhite"|race_cases$Race=="Asian\nOther"|race_cases$Race=="Unknown\nWhite"| race_cases$Race=="White\nAI/AN"|race_cases$Race=="White\nBlack")] <- "Two races"
+
+# assigning and excluding missing values:
+race_cases[which(race_cases$Race==""),]<- NA 
+race_cases<-na.omit(race_cases)
+
+# creating a new variable for total population
+race_cases<- race_cases%>%
+  mutate(total_pop = case_when(year == "2010" ~ 85735 ,
+                           year == "2011" ~ 85995,
+                          year == "2012" ~86785,
+                            year == "2013" ~87725,
+                          year == "2014" ~88740,
+                          year == "2015" ~90005,
+                          year == "2016" ~91320,
+                          year == "2017" ~92575,
+                          year == "2018" ~93590,
+                          year == "2019" ~94360))
+
+# creating new variable for rates per 100,000:
+race_cases$rate<-c(((race_cases$count)/(race_cases$total_pop))*100000)
+
+# view the new dataset:
+race_cases
+```
+Crating graphs:
+```{r}
+# converting year into factor:
+race_cases$year<-as.factor(race_cases$year)
+
+# graph for number of cases per race by year:
+ggplot(race_cases,aes(year,count,group=Race))+
+  geom_line(aes(colour=Race),linetype=3)+
+  geom_point(aes(colour=Race),size=2)+
+  labs(x="Year",y="Number of cases",title="Gonorrhoea cases in Benton county categorised by Race (2010-2019)")+
+  theme_bw()
+
+# graph for rates per 100,000 by race:
+ggplot(race_cases,aes(year,rate,group=Race))+
+  geom_line(aes(colour=Race),linetype=3)+
+  geom_point(aes(colour=Race),size=2)+
+  labs(x="Year",y="Rate(per 100,000)",title="Gonorrhoea rates categorised by Race (2020-2019)")+
+  theme_bw()
+```
+Seasonal variation:
+
+creating new dataset including year, season and the sum of number of cases per year according to season:
+```{r}
+gt_season_var<-years_cases%>%
+  mutate(season_cases= ifelse((month==12|month==1|month==2),"Winter",ifelse((month==3|month==4|month==5),"Spring",ifelse((month==6|month==7|month==8),"Summer",ifelse((month==9|month==10|month==11),"Fall","NA")))))%>%
+  group_by(year,season_cases)%>%
+  summarise(gt_tot= sum(count))
+
+gt_season_var
+```
+```{r}
+# assigning missing values and excluding them:
+gt_season_var[which(gt_season_var$season_cases=="NA"),]<-NA
+gt_season_var<-na.omit(gt_season_var)
+```
+Now lets plot seasonal variations:
+```{r}
+gt_season_var$year<-as.factor(gt_season_var$year)
+ggplot(data=gt_season_var,mapping=aes(x=year,y=gt_tot,group=season_cases,fill=season_cases))+
+  geom_bar(stat="sum",na.rm=T,position = "stack",colour="white",lwd=0.5)+
+  geom_text(aes(label=gt_tot),position = position_stack(0.5),size=2.8,colour="white")+
+  scale_y_continuous()+
+  theme_bw()+
+  labs(x="Year",y="Number of cases",title="Gonorrhea cases in Benton county by season-2010 to 2019")+
+  scale_fill_discrete(name="Seasons")
+```

@@ -1,0 +1,341 @@
+---
+title: "Chlamydia in Benton County"
+author: "Keerthana Radhakrishnan"
+date: "4/18/2020"
+output: word_document
+---
+Chlamydia is a common sexually transmitted infection which is caused by bacteria named Chlamydia trachomatis.
+Common symptoms in women include: abnormal vaginal discharge, a burning sensation when urinating, and pain during intercourse.
+In men, discharge from the penis, burning sensation when urinating, and burning or itching around the opening of penis are some of the symptoms.
+
+Reading the data into R Studio:
+```{r}
+setwd("~/Downloads/internship/Project BCHD/Chlamydia") # setting word directory
+ct<-read.csv("Chlamydia data2.csv", as.is=T, sep=",", header=T, na.strings = TRUE)
+View(ct) # to view data in a separate window
+```
+This data analysis requires the following R packages:
+1. lubridate
+2. dplyr
+3. tidyr
+4. ggplot2
+5. lattice
+
+```{r}
+ct$CollectionDate<-mdy(ct$EXP_Lab..CollectionDate) #Converting "EXP_Lab..CollectionDate" variable into a date variable named "CollectionDate" using Lubridate package
+
+#Creating separate variables for year, month and date 
+ct = ct %>% 
+  mutate(CollectionDate = ymd(CollectionDate)) %>% 
+  mutate_at(vars(CollectionDate), funs(year, month, day))%>%
+  filter(year>=2010 & year<2020) # filtering data between 2010 and 2019
+
+
+#Creating new variable "count" which counts the number of cases per month for each year.
+cases<- ct%>%
+  group_by(year,month)%>%
+  summarise(count=n())
+```
+
+Trellis plot: the following trellis plot represents the number of cases against month per year (2010-2019):
+Using Lattice package to create this plot
+```{r}
+xyplot(cases$count~cases$month|factor(cases$year),layout=c(3,4),main="Trellis plot: cases per month from 2010-2019",type='b',xlab = "month", ylab = "count",aspect = "fill",strip = TRUE,col="blue")
+```
+```{r}
+# Creating wide format of the "cases" dataset:
+year_wide<-spread(cases,month,count)
+
+# creating a new variable "tot_cases" for summing up the number of cases per year
+for (i in year_wide$year){
+  year_wide$tot_cases <- rowSums(year_wide[2:13],na.rm=TRUE)
+  print(year_wide)
+}
+
+# including a new variable "tot.pop" for total population per year in Benton county
+year_wide$tot.pop<- c(85735,85995,86785,87725,88740,90005,91320,92575,93590,94360)
+
+# creating new variable "rate" and including the rates per 100,000 population in this variable for each year
+year_wide<- year_wide%>%
+  mutate(rate=((tot_cases/tot.pop)*100000))
+
+# Including two new variables the records no. of cases in Oregon and their rates
+year_wide$OR_cases<-c(12342,13687,	13493,	14255,	15338,	16336,	17417,	18641,	19103,	19236)
+year_wide$OR_rates<- c(322,	355,	347,	364,	387,	407,	427,	450,	455,	454)
+
+# to take a look at the data
+year_wide
+```
+
+5-year average of Chlamydia (2015-2019):
+```{r}
+five_avg<- year_wide %>%
+  filter(year<=2019 & year>=2015) # creating new dataset for years 2015-2019); I can also use "filter" and "mutate" options for this but I prefer using basic R
+
+# For Benton County,
+mean(five_avg$tot_cases)
+mean(five_avg$rate)
+
+# For Oregon
+mean(five_avg$OR_cases)
+mean(five_avg$OR_rates)
+```
+10- year average (2010-2019):
+```{r}
+# Benton county
+mean(year_wide$tot_cases)
+mean(year_wide$rate)
+
+# For Oregon
+mean(year_wide$OR_cases)
+mean(year_wide$OR_rates)
+```
+Graphs:
+
+1) Plot for number of cases per year; 
+```{r}
+# It is important to convert "year" to factor before plotting the data:
+year_wide$year<-as.factor(year_wide$year)
+
+# Creating plot for Benton county:
+ggplot(year_wide,aes(x=year,y=tot_cases,group=1))+
+  geom_line(colour="blue",lty=7,lwd=1)+
+  geom_point(colour="blue",lwd=3)+
+  theme_bw()+
+  labs(x="Year", y="Number of cases", title = "Chlamydia cases in Benton county- 2010 to 2019")
+
+# the same for Oregon:
+ggplot(year_wide,aes(x=year,y=OR_cases,group=1))+
+  geom_line(colour="darkgreen",lty=7,lwd=1)+
+  geom_point(colour="darkgreen",lwd=3)+
+  theme_bw()+
+  labs(x="Year", y="Number of cases", title = "Chlamydia cases in Oregon- 2010 to 2019")
+
+```
+Comparing Chlamydia rates in Oregon and Benton county between 2010 and 2019:
+```{r}
+year_wide$year<-as.factor(year_wide$year)
+colors<-c("Benton county"="blue","Oregon"="darkgreen")
+ggplot(year_wide,aes(x=year,y=rate,group=1))+
+  geom_line(aes(x=year,y=rate,group=1,colour="Benton"),lwd=1)+
+  geom_line(aes(x=year,y=OR_rates,group=1,colour="Oregon"),lwd=1)+
+  geom_point(aes(x=year,y=rate,group=1),colour="blue",lwd=2)+
+  geom_point(aes(x=year,y=OR_rates,group=1), colour="darkgreen",lwd=2)+
+  scale_y_continuous(breaks=seq(0,700,100))+
+  theme_bw()+
+  labs(x="Years", y="rate (per 100,000)", title = "Chlamydia rates in Benton County and Oregon from years 2010-2019",color="Legend")+
+  scale_colour_manual(name="Legend",values=c(Benton="blue", Oregon="darkgreen"))
+```
+Interpretation: As we can see above, there is a huge difference in the rates of chlamydia between Oregon and Benton county, with county having a lot more cases than the state.
+
+Chlamydia and gender:
+
+```{r}
+#Creating a new dataset "gender" which includes year, Sex and number of cases per gender for each year:
+gender<- ct%>%
+  group_by(year,Sex)%>%
+  summarise(number=n())
+# gender<- gender[which(gender$year<2020 & gender$year>=2010),]
+# removing missing values:
+gender[which(gender$Sex==""),]<-NA
+gender<-na.omit(gender)
+
+#take a look at the new dataset:
+gender
+```
+Graphs:
+1) Pyramid plot for number of cases against year categorized by gender:
+```{r}
+ggplot(data=gender) +
+  geom_bar(aes(year,number,group=Sex,fill=Sex), stat = "identity",subset(gender,Sex=="F")) +
+  geom_bar(aes(year,-number,group=Sex,fill=Sex), stat = "identity",subset(gender,Sex=="M")) +
+  scale_y_continuous(breaks=seq(-1000,1000,50),labels=abs(seq(-1000,1000,50))) +
+  scale_x_continuous(breaks= seq(2010,2019,1))+
+  theme_bw()+
+  labs(x="Year",y="Number of cases",title="Chlamydia cases per year for males and females (2010-2019)")+
+  coord_flip() +
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+2) Scatterplot for number of cases based on gender:
+```{r}
+gender$year<-as.factor(gender$year)
+ggplot(gender,aes(x=year,y=number,group=Sex))+
+  geom_line(aes(col=Sex),lwd=2)+
+  labs(x="Year",y="Number of cases",title="Chlamydia cases in Benton county by gender- 2010 to 2019")+
+  scale_colour_discrete(name="Gender", breaks=c("F", "M","U"),labels=c("Female","Male","Unidentified"))+
+  theme_bw()
+```
+Chlamydia and age:
+```{r}
+# creating new dataset that contains year, Age, Sex, and the count of the cases:
+ct_age_cat<- ct%>%
+  group_by(Age,Sex)%>%
+  summarise(counts=n())
+
+# Creating a new variable " age_cat" categorising age into age groups:
+ct_age_cat<- ct_age_cat%>%
+  mutate(age_cat=case_when(Age < 10 ~ "(0-9)",
+                           Age >= 10  & Age <= 19 ~ "(10-19)",
+                           Age >= 20  & Age <= 29 ~ "(20-29)",
+                           Age >= 30  & Age <= 39 ~ "(30-39)",
+                           Age >= 40  & Age <= 49 ~ "(40-49)",
+                           Age >= 50  & Age <= 59 ~ "(50-59)",
+                           Age >= 60  & Age <= 69 ~ "(60-69)",
+                           Age >= 70  & Age <= 79 ~ "(70-79)",
+                           Age >= 80  & Age <= 89 ~ "(80-89)",
+                           Age >= 90  & Age <= 99 ~ "(90-99)"))
+
+ct_age_cat # take a look at the new dataset
+```
+
+Graph showing chlamydia cases by age group and gender:
+```{r}
+#ct_age_cat$counts<-as.integer(ct_age_cat$counts,na.rm=TRUE)
+ggplot(ct_age_cat,aes(counts,group=Sex,fill=Sex))+
+  geom_bar(aes(age_cat,counts,group=Sex,fill=Sex), stat = "identity",subset(ct_age_cat,Sex=="F"),na.rm=TRUE) +
+  geom_bar(aes(age_cat,-counts,group=Sex,fill=Sex), stat = "identity",subset(ct_age_cat,Sex=="M"),na.rm=TRUE) +
+  scale_y_continuous(breaks=seq(-1000,4000,200),labels=abs(seq(-1000,4000,200))) +
+  scale_x_discrete()+
+  theme_bw()+
+  labs(x="Age range",y="Number of cases",title="Chlamydia in Benton county by Age groups and Gender")+
+  coord_flip()+
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+**Interpretation:**
+The above graph shows the number of cases recorded for different age groups categorised by gender. 
+The graph shows that gonorrhoea cases are higher in females than in males and highest number of cases are found in persons between 20-29 years age irrespective of the gender.
+
+Chlamydia and race:
+```{r}
+# creating new dataset for year, race and count of cases per race and year:
+ct_race_cases<- ct%>%
+  group_by(year,EXP_Patient..Race)%>%
+  summarise(count=n())
+
+table(ct_race_cases$EXP_Patient..Race) # gives a table of race in the dataset
+```
+Categorization of race:
+"Two races"= Black\nAI/AN","Asian\n","Asian\nOther","Asian\nPacific Is.","Black\nOther", "Pacific Is.\nAsian","White\nAsian","White\nOther","White\nAI/AN","Other\n","Asian\nWhite",White\n
+
+```{r}
+# combining a few category of races to create a new "two races" category:
+ct_race_cases$EXP_Patient..Race[which(ct_race_cases$EXP_Patient..Race=="Black\nAI/AN"|ct_race_cases$EXP_Patient..Race=="Asian\n" |ct_race_cases$EXP_Patient..Race=="Asian\nOther"|ct_race_cases$EXP_Patient..Race=="Asian\nWhite"|ct_race_cases$EXP_Patient..Race=="Asian\nPacific Is."|ct_race_cases$EXP_Patient..Race=="Black\nOther" |ct_race_cases$EXP_Patient..Race=="Pacific Is.\nAsian"| ct_race_cases$EXP_Patient..Race=="White\nAsian"|ct_race_cases$EXP_Patient..Race=="White\nOther"|ct_race_cases$EXP_Patient..Race=="White\nAI/AN"|ct_race_cases$EXP_Patient..Race=="Other\n"|ct_race_cases$EXP_Patient..Race=="White\n")] <- "Two races"
+
+# Adding total population as a new variable: 
+ct_race_cases<- ct_race_cases%>%
+  mutate(total_pop = case_when(year == "2010" ~ 85735 ,
+                           year == "2011" ~ 85995,
+                          year == "2012" ~86785,
+                          year == "2013" ~87725,
+                          year == "2014" ~88740,
+                          year == "2015" ~90005,
+                          year == "2016" ~91320,
+                          year == "2017" ~92575,
+                          year == "2018" ~93590,
+                          year == "2019" ~94360))
+
+# to calculate rates per 100,000:
+ct_race_cases$Rate<-c(((ct_race_cases$count)/(ct_race_cases$total_pop))*100000)
+
+# assigning missing values and removing them from the dataset:
+ct_race_cases$EXP_Patient..Race<-as.character(ct_race_cases$EXP_Patient..Race)
+ct_race_cases[which(ct_race_cases$EXP_Patient..Race==""),]<- NA
+ct_race_cases<-na.omit(ct_race_cases)
+
+# to look at the edited dataset:
+ct_race_cases
+```
+Graphs:
+```{r}
+
+#for number of cases per race:
+ct_race_cases$year<-as.factor(ct_race_cases$year)
+ggplot(ct_race_cases,aes(year,count,group=EXP_Patient..Race))+
+  geom_line(aes(colour=EXP_Patient..Race),linetype=3)+
+  geom_point(aes(colour=EXP_Patient..Race),size=2)+
+  scale_color_discrete(name="Race")+
+  labs(x="Year",y="Number of cases",title="Chlamydia cases categorised by Race (2010-2019)")+
+  theme_bw()
+
+# for rates per 100,000 population per race:
+ct_race_cases$year<-as.factor(ct_race_cases$year)
+ggplot(ct_race_cases,aes(year,Rate,group=EXP_Patient..Race))+
+  geom_line(aes(colour=EXP_Patient..Race),linetype=3)+
+  geom_point(aes(colour=EXP_Patient..Race),size=2)+
+  scale_color_discrete(name="Race")+
+  labs(x="Year",y="Rate (per 100,000)",title="Chlamydia rates per 100,000 categorised by Race")+
+  theme_bw()
+```
+Lets remove "Refused" and "Unknown" to get the graph solely for races:
+```{r}
+Nct_race_cat$year<-as.factor(Nct_race_cat$year)
+ct_race_cat[which(ct_race_cat$Race=="Ref"|ct_race_cat$Race=="" ),]<- NA
+Nct_race_cat<-na.omit(ct_race_cat)
+Nct_race_cat
+ggplot(Nct_race_cat,aes(year,Rate,group=Race))+
+  geom_line(aes(colour=Race),linetype=3)+
+  geom_point(aes(colour=Race),size=2)+
+  scale_color_discrete(name="Race", breaks=c("AI/","Asi","Bla","Oth","Pac","Two","Whi"),labels=c("AI/AN", "Asian","Black","Others","Pacific Is","Two races","White"))+
+  labs(x="Year",y="Rate (per 100,000)",title="Chlamydia rates (per 100,000) in Benton county by Race- 2010-2019")+
+  theme_bw()
+```
+Chlamydia and Seasonal variation:
+
+Creating a new dataset with a new categorical variable "season_cases" that categorizes the "month" variable into fall, spring, winter and summer. Another variable "total" sums up the count for each season per year.  
+```{r}
+ct_season_var<-cases%>%
+  mutate(season_cases= ifelse((month==12|month==1|month==2),"Winter",ifelse((month==3|month==4|month==5),"Spring",ifelse((month==6|month==7|month==8),"Summer",ifelse((month==9|month==10|month==11),"Fall","NA")))))%>%
+  group_by(year,season_cases)%>%
+  summarise(total= sum(count))
+
+ct_season_var # to take a look at the data
+```
+Dealing with missing values and ommitting them:
+```{r}
+ct_season_var[which(ct_season_var$season_cases=="NA"),]<-NA
+ct_season_var<-na.omit(ct_season_var)
+```
+Barplot for seasonality. For this, I am converting the "year" variable into factor for representation purposes. If I don't take this step, the year will be considered as an integer.
+```{r}
+ct_season_var$year<-as.factor(ct_season_var$year)
+ggplot(data=ct_season_var,mapping=aes(x=year,y=total,group=season_cases,fill=season_cases))+
+  geom_bar(stat="sum",na.rm=T,position = "stack",colour="white",lwd=0.5)+
+  geom_text(aes(label=total),position = position_stack(0.5),size=3.5,colour="white")+
+  scale_y_continuous()+
+  theme_bw()+
+  labs(x="Year",y="Number of cases ",title="Chlamydia cases in Benton county categorised by season (2010-2019)")+
+  scale_fill_discrete(name="Seasons")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

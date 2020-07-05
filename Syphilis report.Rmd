@@ -1,0 +1,391 @@
+---
+title: "Syphilis in Benton County"
+author: "Keerthana Radhakrishnan"
+date: "4/21/2020"
+output: word_document
+---
+Setting th working directory and reading datafile:
+```{r}
+setwd("~/Downloads/internship/Project BCHD/Syphilis")
+st<-read.csv("Syphilis_data.csv", header = TRUE, as.is=TRUE, sep=",",na.strings = c(" ","NA",NA))
+View(st) # to view the dataset
+```
+Packages used:
+```{r}
+require(lubridate)
+require(dplyr)
+require(lattice)
+require(ggplot2)
+```
+
+```{r}
+# Converting "EXP_Lab..CollectionDate" variable into date format "CollectionDate"
+st$CollectionDate<-mdy(st$EXP_Lab..CollectionDate)
+
+# Creating three separate variables for year, month and date
+st = st %>% 
+  mutate(CollectionDate = ymd(CollectionDate)) %>% 
+  mutate_at(vars(CollectionDate), funs(year, month, day)) %>%
+  filter(year>=2010 & year<= 2019)
+```
+Creating an new dataset including year, month and count of cases per month for each year:
+```{r}
+st_cases<- st%>%
+  group_by(year,month)%>%
+  summarise(count=n())
+# here, I asked R to provide me a summary count of cases grouped by year and month
+
+# converting the data to wide format.
+
+st_cases_wide<-spread(st_cases,month,count)
+View(st_cases_wide)  
+```
+From the wide format data, we can see that the cases of syphilis has increased in 2018 and 2019. 
+
+Trellis plot:
+```{r}
+xyplot(st_cases$count~st_cases$month|factor(st_cases$year),layout=c(3,4),main="Trellis plot: cases per month from 2010-2019",type='b',xlab = "month", ylab = "count",aspect = "fill",strip = TRUE,col="blue")
+```
+The plot above adds evidence to the the finding that the cases have increased in 2018-2019. We can see that there were only a few cases from 2010-2017 which then rapidly increased in 2018 and 2019.
+
+Calculating syphilis rates to compare with Oregon rates:
+```{r}
+st_year_wide<-spread(st_cases,month,count)
+for (i in st_year_wide$year){
+  st_year_wide$tot_cases <- rowSums(st_year_wide[2:13],na.rm=TRUE)
+  print(st_year_wide)
+}
+
+## including another variable for total population
+st_year_wide$tot.pop<- c(85735,85995,86785,87725,88740,90005,92575,93590,94360)
+```
+```{r}
+#Note that the data for 2016 is unavailable. Adding 2016 as zero.
+add_d<-data.frame("year"=as.double(2016),"1"=0,"2"=0,"3"=0,"4"=0,"5"=0,"6"=0,"7"=0,"8"=0,"9"=0,"10"=0,"11"=0,"12"=0,"tot_cases"=as.double(0),"tot.pop"=as.double(91320),check.names = FALSE)
+add_d[2:13]<-as.integer(add_d[2:13])
+
+## adding the 2016 data into the original dataset:
+st_year<-merge(st_year_wide,add_d,all = TRUE)
+
+## caluclating rates per 100,000:
+st_year<- st_year%>%
+  mutate(rate=(tot_cases/tot.pop)*100000)
+
+## to view the dataset:
+View(st_year)
+```
+Lets pull data for Oregon to compare rates with the Benton county. Same procedure is used to edit Oregon data:
+```{r}
+st_state<-read.csv("st-state.csv",header=TRUE,as.is=TRUE,sep=",",na.strings = " ")
+
+st_state$CollectionDate<-mdy(st_state$EXP_Lab..CollectionDate)
+st_state = st_state %>% 
+  mutate(CollectionDate = ymd(CollectionDate)) %>% 
+  mutate_at(vars(CollectionDate), funs(year, month, day)) %>%
+  filter(year>=2010 & year<=2019)
+
+st_state_cases<- st_state%>%
+  group_by(year,month)%>%
+  summarise(OR_count=n())
+st_state_cases
+st_state_wide<-spread(st_state_cases,month,OR_count)
+st_state_wide
+```
+State data contains data for 2016. Do I have to remove it so that I can compare it with the Benton county data?- No , dont exclude any data..instead add 2016 to Benton but let the value be zero.
+```{r}
+for (i in st_state_wide$year){
+  st_state_wide$OR_cases <- rowSums(st_state_wide[2:13],na.rm=TRUE)
+  print(st_state_wide)
+}
+
+st_state_wide$tot_pop<- c(3837300,	3857625,	3883735,	3919020,	3962710,	4013845,4076350,	4141100,	4195300,	4236400)
+st_state_wide<-st_state_wide%>%
+  mutate(OR_rate=(OR_cases/tot_pop)*100000)
+View(st_state_wide)
+```
+Joining both Oregon rates with Benton data:
+```{r}
+st_year$OR_cases<-st_comp$OR_cases
+st_year$OR_rates<-st_comp$OR_rate
+
+View(st_year)
+```
+5- year average (2015-2019):
+```{r}
+st_five_avg<- st_year %>%
+  filter(year<=2019 & year>=2015)
+mean(st_five_avg$tot_cases)
+mean(st_five_avg$rate)
+mean(st_five_avg$OR_cases)
+mean(st_five_avg$OR_rates)
+```
+10- year average (2010-2019):
+```{r}
+mean(st_year$tot_cases)
+mean(st_year$rate)
+mean(st_year$OR_cases)
+mean(st_year$OR_rates)
+```
+Plot for Benton cases per year:
+```{r}
+st_year$year<-as.factor(st_year$year)
+ggplot(st_year,aes(x=year,y=tot_cases,group=1))+
+  geom_line(aes(x=year,y=tot_cases,group=1,colour="Benton"),colour="blue",lwd=2)+
+  geom_point(colour="blue",lwd=3)+
+  scale_y_continuous()+
+  theme_bw()+
+  labs(x="Year", y="Number of cases", title = "Syphilis cases in Benton County between 2010 and 2019")
+```
+Cases per year in Oregon:
+```{r}
+ggplot(st_year,aes(x=year,y=OR_cases,group=1))+
+  geom_line(colour="dark green",lwd=2)+
+  geom_point(colour="dark green",lwd=3)+
+  scale_y_continuous()+
+  theme_bw()+
+  labs(x="Year", y="Number of cases", title = "Syphilis in Oregon from 2010-2019")
+```
+Now lets plot Benton and OR rates:
+```{r}
+st_year$year<-as.factor(st_year$year)
+colors<-c("Benton county"="blue","Oregon"="darkgreen")
+ggplot(st_year,aes(x=year,y=rate,group=1))+
+  geom_line(aes(x=year,y=rate,group=1,colour="Benton"),lwd=2)+
+  geom_line(aes(x=year,y=OR_rates,group=1,colour="Oregon"),lwd=2)+
+  geom_point(aes(x=year,y=rate,group=1),colour="blue",lwd=3)+
+  geom_point(aes(x=year,y=OR_rates,group=1), colour="darkgreen",lwd=3)+
+  scale_y_continuous()+
+  theme_bw()+
+  labs(x="Year", y="Rate (per 100,000)", title = "Syphilis rates in Benton County and Oregon- 2010 to 2019",color="Legend")+
+  scale_colour_manual(name="Legend",values=c(Benton="blue", Oregon="darkgreen"))
+```
+The plot comparing rates show that Benton county has way more rates than Oregon in 2018 and 2019 although rates in both the places have increased in that period.
+
+Gender data for Benton:
+
+I am adding data for 2016 and 2014 for presentation and comparison purposes. 
+```{r}
+# creating new dataset including year, Sex, and count of cases
+st_gender<- st%>%
+  group_by(year,Sex)%>%
+  summarise(number=n())
+
+# adding 2016 and 2014 data as zero:
+add_s<-data.frame("year"=as.double(2016),"Sex"=as.character(c("","F","M")),"number"=as.integer(c(0,0,0)),check.names = FALSE)
+add_s1<-data.frame("year"=as.double(2014),"Sex"=as.character(c("F","M")),"number"=as.integer(c(0,0)),check.names = FALSE)
+
+# merging the above created data with the original dataset created for gender:
+st_gender_f<-merge(st_gender,add_s,all =TRUE)
+st_gender_f<-merge(st_gender_f,add_s1,all=TRUE)
+st_gender_f
+# wide format:
+st_gender_wide<-spread(st_gender_f,year,number)
+st_gender_wide
+
+# adding a new variable for total cases by gender
+for (i in st_gender_wide$Sex){
+  st_gender_wide$cases<- rowSums(st_gender_wide[2:11],na.rm=TRUE)
+  print(st_gender_wide)
+}
+
+st_gender_f$year<-as.factor(st_gender_f$year) 
+```
+
+Pyramid plot:
+```{r}
+# st_gender_f$year<-as.factor(st_gender_f$year)
+ggplot(data=st_gender_f) +
+  geom_bar(aes(year,number,group=Sex,fill=Sex), stat = "identity",subset(st_gender,Sex=="F")) +
+  geom_bar(aes(year,-number,group=Sex,fill=Sex), stat = "identity",subset(st_gender,Sex=="M")) +
+  scale_y_continuous(breaks=seq(-50,50,2),labels=abs(seq(-50,50,2))) +
+  scale_x_continuous(breaks=seq(2010,2019,1),labels=seq(2010,2019,1))+
+  theme_bw()+
+  labs(x="Year",y="Number of cases",title="Syphilis cases in Benton county by gender between 2010 and 2019")+
+  coord_flip() +
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+*NO NEED TO PRESENT A PYRAMID PLOT FOR OREGON*
+For Oregon,
+```{r}
+#st_state
+st_state_gender<- st_state%>%
+  group_by(year,Sex)%>%
+  summarise(number=n())
+st_state_gender<- st_state_gender[which(st_state_gender$year<2020 & st_state_gender$year>=2010),]
+state_gender_wide<-spread(st_state_gender,year,number)
+#state_gender_wide
+for (i in state_gender_wide$Sex){
+  state_gender_wide$cases <- rowSums(state_gender_wide[2:10],na.rm=TRUE)
+  print(state_gender_wide)
+}
+#st_state_gender
+```
+Pyramid plot:
+```{r}
+ggplot(data=st_state_gender) +
+  geom_bar(aes(year,number,group=Sex,fill=Sex), stat = "identity",subset(st_state_gender,Sex=="F")) +
+  geom_bar(aes(year,-number,group=Sex,fill=Sex), stat = "identity",subset(st_state_gender,Sex=="M")) +
+  scale_y_continuous(breaks=seq(-1000,1000,50),labels=abs(seq(-1000,1000,50))) +
+  scale_x_continuous(breaks= seq(2010,2020,1))+
+  theme_bw()+
+  labs(x="Year",y="Number of cases",title="Cases per year for males and females")+
+  coord_flip() +
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+lets work on a normal plot with two lines for males and females:
+looks like we need to add 2016 data as zero for comparison purposes,
+```{r}
+st_gender_f[which(st_gender_f$Sex=="" ),]<-NA
+st_gender_f<- na.omit(st_gender_f)
+st_gender_f$year<-as.factor(st_gender_f$year)
+ggplot(st_gender_f,aes(x=year,y=number,group=Sex))+
+  geom_line(aes(col=Sex),lwd=2)+
+  geom_point(aes(col=Sex),lwd=2)+
+  labs(x="Year",y="Number of cases",title="Syphilis cases in Benton county by gender between 2010-2019")+
+  scale_colour_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))+
+  theme_bw()
+```
+Now lets try to graph the same for the state:
+```{r}
+#table(st_state_gender$Sex)
+st_state_gender[which(st_state_gender$Sex=="" ),]<-NA
+st_state_gender<- na.omit(st_state_gender)
+st_state_gender$year<-as.factor(st_state_gender$year)
+ggplot(st_state_gender,aes(x=year,y=number,group=Sex))+
+  geom_line(aes(col=Sex),lwd=2)+
+  geom_point(aes(col=Sex),lwd=2)+
+  labs(x="Year",y="Number of cases",title="Number of cases in Oregon between 2010-2019 categorized by gender")+
+  scale_colour_discrete(name="Gender", breaks=c("F", "M","X"),labels=c("Female","Male","X"))+
+  theme_bw()
+```
+Cases according to age group:
+```{r}
+# creating new dataset for age, year and sex:
+st_age_cat<- st%>%
+  group_by(Age,Sex)%>%
+  summarise(counts=n())
+
+# Categorising age into groups:
+st_age_cat<- st_age_cat%>%
+  mutate(age_cat=case_when(Age < 10 ~ "(0-9)",
+                           Age >= 10  & Age <= 19 ~ "(10-19)",
+                           Age >= 20  & Age <= 29 ~ "(20-29)",
+                           Age >= 30  & Age <= 39 ~ "(30-39)",
+                           Age >= 40  & Age <= 49 ~ "(40-49)",
+                           Age >= 50  & Age <= 59 ~ "(50-59)",
+                           Age >= 60  & Age <= 69 ~ "(60-69)",
+                           Age >= 70  & Age <= 79 ~ "(70-79)",
+                           Age >= 80  & Age <= 89 ~ "(80-89)",
+                           Age >= 90  & Age <= 99 ~ "(90-99)"))
+
+st_age_cat # view the data
+```
+Graphs:
+```{r}
+# removing missing values:
+st_age_cat<-na.omit(st_age_cat)
+st_age_cat$counts<-as.integer(st_age_cat$counts,na.rm=TRUE)
+ggplot(st_age_cat,aes(counts,group=Sex,fill=Sex))+
+  geom_bar(aes(age_cat,counts,group=Sex,fill=Sex), stat = "identity",subset(ct_age_cat,Sex=="F"),na.rm=TRUE) +
+  geom_bar(aes(age_cat,-counts,group=Sex,fill=Sex), stat = "identity",subset(ct_age_cat,Sex=="M"),na.rm=TRUE) +
+  scale_y_continuous(breaks=seq(-1000,4000,200),labels=abs(seq(-1000,4000,200))) +
+  theme_bw()+
+  labs(x="Age range",y="Number of cases",title="Syphilis in Benton county by age group and gender (2010-2019)")+
+  coord_flip()+
+  scale_fill_discrete(name="Gender", breaks=c("F", "M"),labels=c("Female","Male"))
+```
+Cases according to Race:
+```{r}
+#creating new dataset for race, year and number of cases per each race for every year:
+race_st_cases<- st%>%
+  group_by(year,EXP_Patient..Race)%>%
+  summarise(count=n())
+```
+
+```{r}
+table(race_st_cases$EXP_Patient..Race)
+
+#creating new category combining categories with two or more races:
+race_st_cases$EXP_Patient..Race[which(race_st_cases$EXP_Patient..Race=="Asian\nOther"|race_st_cases$EXP_Patient..Race=="Other\nBlack\nWhite"| race_st_cases$EXP_Patient..Race=="White\nAI/AN")] <- "Two or more races"
+
+race_st_cases$EXP_Patient..Race<-as.character(race_st_cases$EXP_Patient..Race)
+
+# assigning and excluding NA's:
+race_st_cases[which(race_st_cases$EXP_Patient..Race==""),]<- NA
+race_st_cases<-na.omit(race_st_cases)
+
+# adding new variable for total population:
+race_st_cases<- race_st_cases%>%
+  mutate(total_pop = case_when(year == "2010" ~ 85735 ,
+                           year == "2011" ~ 85995,
+                          year == "2012" ~86785,
+                            year == "2013" ~87725,
+                          year == "2014" ~88740,
+                          year == "2015" ~90005,
+                          year == "2016" ~91320,
+                          year == "2017" ~92575,
+                          year == "2018" ~93590,
+                          year == "2019" ~94360))
+
+# "rate" variable:
+race_st_cases$rate<-c(((race_st_cases$count)/(race_st_cases$total_pop))*100000)
+
+#view the edited data
+race_st_cases
+```
+Graph:
+```{r}
+race_st_cases$year<-as.factor(race_st_cases$year)
+ggplot(race_st_cases,aes(year,count,group=EXP_Patient..Race))+
+  geom_line(aes(colour=EXP_Patient..Race),linetype=3)+
+  geom_point(aes(colour=EXP_Patient..Race),lwd=2)+
+  labs(x="Year",y="Number of cases",title="Syphilis cases in Benton county categorised by race (2010-2019)")+
+  theme_bw()
+```
+*Footnote*
+Unknown category in the Race variables include those people who did not know their race 
+
+If I plot the graph without including those who did not provide their information?
+
+For syphilis rates and year categorized by race,
+```{r}
+race_st_cases$year<-as.factor(race_st_cases$year)
+ggplot(race_st_cases,aes(year,rate,group=EXP_Patient..Race))+
+  geom_line(aes(colour=EXP_Patient..Race),linetype=3)+
+  geom_point(aes(colour=EXP_Patient..Race),lwd=2)+
+  labs(x="Year",y="rates",title="Syphilis rates (per 100,000) in Benton county by Race- 2010-2019")+
+  theme_bw()
+```
+Seasonal variation of cases in Benton county:
+
+Spring (March-may)
+Summer (June-august)
+Fall (September-november)
+Winter (December- february)
+
+Lets group data according the seasons:
+```{r}
+# creating tnew dataset with year, season, and sum of number of cases
+st_season<-st_cases%>%
+  mutate(season_cases= ifelse((month==12|month==1|month==2),"Winter",ifelse((month==3|month==4|month==5),"Spring",ifelse((month==6|month==7|month==8),"Summer",ifelse((month==9|month==10|month==11),"Fall","NA")))))%>%
+  group_by(year,season_cases)%>%
+  summarise(st_tot= sum(count))
+st_season
+```
+Now that we have seasonal level count, we will plot the cases grouped by seasons:
+```{r}
+# assigning missing values and excluding them:
+st_season[which(st_season$season_cases=="NA"),]<-NA
+st_season<-na.omit(st_season)
+```
+Barplot for cases by year and season:
+```{r}
+st_season$year<-as.factor(st_season$year)
+ggplot(data=st_season,mapping=aes(x=year,y=st_tot,group=season_cases,fill=season_cases))+
+  geom_bar(stat="sum",na.rm=T,position = "stack",colour="white",lwd=0.5)+
+  geom_text(aes(label=st_tot),position = "stack",size=2.5,colour="white")+
+  #scale_y_continuous(breaks=c(0,600,100), labels=c(0,600,100))+
+  theme_bw()+
+  labs(x="Year",y="Number of cases ",title="Syphilis cases in Benton county by season (2010-2019)")+
+  scale_fill_discrete(name="Seasons")
+```
